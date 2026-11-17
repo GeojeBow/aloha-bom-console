@@ -97,7 +97,8 @@ def test_report_has_area_sheets_and_requests(tmp_path):
     wb = load_workbook(p)
     assert wb.sheetnames == ["요약", "ER", "Accommodation", "On-deck"]
     texts = [str(v) for row in wb["ER"].iter_rows(values_only=True) for v in row if v]
-    assert any("SAP 수량 3 → 5 EA 수정 요청" in t for t in texts)
+    assert any("SAP 수량 3 → 5 EA 수정 요청" in t and "Correct SAP qty 3 → 5 EA" in t for t in texts)
+    assert wb["ER"].cell(row=5, column=2).value == "우선순위\nPriority"
     split = write_report(c, tmp_path / "s", {"design": "d", "sap": "s", "purchase": "p"}, split=True)
     assert len(split) == 3
 

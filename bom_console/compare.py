@@ -182,3 +182,22 @@ def request_text(r: Row, stage: str) -> str:
     if v == "code":
         return f"{team} 자재 {o.code} {o.unit} → {a.code} {a.unit} ({a.spec or a.name}) {'수정' if stage == 'sap' else '정정'} 요청"
     return f"설계 Master에 없는 항목. 설계에서 삭제됐다면 {'SAP 삭제' if stage == 'sap' else '구매 취소'} 요청"
+
+
+def request_text_en(r: Row, stage: str) -> str:
+    """같은 요청의 영문 (미국인 엔지니어용)."""
+    v = r.cat.get(stage)
+    if v in (None, "ok"):
+        return ""
+    a, o = r.design, (r.sap if stage == "sap" else r.purchase)
+    team = "SAP" if stage == "sap" else "Purchasing"
+    q = lambda x: f"{x.qty:g} {x.unit}".strip()
+    if v == "missing":
+        return (f"Request SAP registration: {a.code or a.item_no}, {q(a)}" if stage == "sap"
+                else f"Confirm purchase status: {a.code or a.item_no}, {q(a)}")
+    if v == "qty":
+        return f"Correct {team} qty {o.qty:g} → {q(a)}"
+    if v == "code":
+        return f"Correct {team} material {o.code} {o.unit} → {a.code} {a.unit} ({a.spec or a.name})"
+    return (f"Not in Design Master. If deleted from design, request "
+            f"{'SAP deletion' if stage == 'sap' else 'PO cancellation'}")
