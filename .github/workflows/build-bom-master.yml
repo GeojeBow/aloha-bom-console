@@ -1,0 +1,46 @@
+name: build-bom-master
+
+on:
+  push:
+    branches: [main]
+    paths: ["bom-master/**", ".github/workflows/build-bom-master.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install openpyxl==3.1.5 pytest==8.3.4 PySide6==6.8.1
+      - run: python -m pytest -q bom-master/tests
+
+  windows-exe:
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-dev.txt
+      - name: Build BOM_Master.exe (same script as the original build.ps1)
+        shell: pwsh
+        run: |
+          $notes = (Get-Content bom-master/release_notes.txt -Raw -Encoding utf8).Trim()
+          & bom-master/build.ps1 -Notes $notes
+          if (-not (Test-Path bom-master/release/BOM_Master.exe)) { throw "exe missing" }
+          Get-Content bom-master/release/version.json
+      - name: Push exe to dist-bom-master branch
+        shell: bash
+        run: |
+          mkdir out && cp bom-master/release/BOM_Master.exe bom-master/release/version.json out/
+          cd out
+          git init -q && git checkout -q -b dist-bom-master && git add .
+          git -c user.name=ci -c user.email=ci@users.noreply.github.com commit -qm "build ${GITHUB_SHA}"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" dist-bom-master

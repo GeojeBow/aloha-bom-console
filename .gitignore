@@ -5,3 +5,6 @@ build/
 dist/
 version_info.txt
 .pytest_cache/
+bom-master/release/
+bom-master/tests/_appdata/
+__pycache__/
