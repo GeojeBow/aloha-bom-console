@@ -52,6 +52,20 @@ DEFAULT_AREA_RULES: list[list[str]] = [
 ]
 
 
+# 배포 폴더: 해리 OneDrive의 Claude 작업 폴더. 다른 사람 PC에서도 찾도록 OneDrive 환경변수 기준 경로도 함께 본다.
+RELEASE_SUBPATH = Path("Claude_Schedule") / "00_Claude_Workspace" / "AlohaBOM"
+RELEASE_FALLBACK = Path(r"C:\Users\yk09269\OneDrive - PHILLY SHIPYARD, INC") / RELEASE_SUBPATH
+
+
+def default_update_dir() -> str:
+    cands = [Path(os.environ[k]) / RELEASE_SUBPATH for k in ("OneDriveCommercial", "OneDrive") if os.environ.get(k)]
+    cands.append(RELEASE_FALLBACK)
+    for c in cands:
+        if (c / "version.json").is_file():
+            return str(c)
+    return ""
+
+
 def app_dir() -> Path:
     base = os.environ.get("APPDATA") or os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
     p = Path(base) / APP_NAME
@@ -73,7 +87,7 @@ class AppConfig:
     stale_days: int = 7
     history_db: str = ""          # 비우면 사용자 폴더. 팀이 같은 이력을 보려면 N: 공용 폴더로 지정
     report_dir: str = ""
-    update_dir: str = ""          # 새 버전 exe + version.json 을 올려 두는 공용 폴더
+    update_dir: str = ""          # 비우면 OneDrive\Claude_Schedule\00_Claude_Workspace\AlohaBOM 을 찾아 쓴다
     aliases: dict[str, list[str]] = field(default_factory=lambda: {k: list(v) for k, v in DEFAULT_ALIASES.items()})
     area_rules: list[list[str]] = field(default_factory=lambda: [list(r) for r in DEFAULT_AREA_RULES])
     hulls: list[str] = field(default_factory=lambda: ["S040", "S041", "S042"])
@@ -88,6 +102,10 @@ class AppConfig:
     def report_path(self) -> Path:
         p = Path(self.report_dir) if self.report_dir else Path.home() / "Documents" / "AlohaBOM Reports"
         return p
+
+    @property
+    def update_path(self) -> str:
+        return self.update_dir or default_update_dir()
 
     def configured(self) -> bool:
         return all(self.folders.get(s) for s in SOURCES)

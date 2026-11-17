@@ -20,15 +20,15 @@ S040 · S041 · S042 전장 BOM을 **① 설계 Master(기준)** → **② SAP**
 - 비교할 때마다 이력(SQLite)에 기록합니다. 팀이 같은 이력을 보려면 설정에서 N: 공용 폴더로 지정하세요.
 - **설정 > 저장 위치 > 매일 아침 7시 자동 기록 등록**: 프로그램을 안 켠 날도 `AlohaBOM.exe --scan`으로 기록.
 
-## 업데이트 배포
-새 `AlohaBOM.exe`와 `version.json`을 설정의 **업데이트 폴더**(예: N: 공용 폴더)에 올리면,
-각자 exe를 켤 때 버전을 비교해서 스스로 교체하고 다시 켜집니다.
+## 배포 · 자동 업데이트
+- 배포 폴더: `OneDrive - PHILLY SHIPYARD, INC\Claude_Schedule\00_Claude_Workspace\AlohaBOM`
+- 관리자(해리) PC에서 `publish.bat` 실행 → exe를 만들어 배포 폴더에 `AlohaBOM.exe`와 `version.json`을 올립니다.
+- 사용자는 배포 폴더의 `AlohaBOM.exe`를 한 번만 복사해 가면, 이후 실행할 때마다 배포 폴더의 버전을 확인해서 새 버전이면 스스로 교체하고 다시 켜집니다.
+- 새 버전을 낼 때는 `bom_console\__init__.py`의 `__version__`을 올리고 `publish.bat`을 다시 실행합니다.
 
 ## 개발
 ```
 pip install -r requirements-dev.txt
 python -m pytest -q tests
 python -m bom_console          # 실행
-build.bat                      # Windows에서 exe 만들기 → dist\AlohaBOM.exe
 ```
-GitHub에 push하면 Actions가 Windows exe를 만들어 아티팩트로 올립니다. `v0.2.0` 같은 태그를 push하면 Release에 exe와 version.json이 붙습니다.

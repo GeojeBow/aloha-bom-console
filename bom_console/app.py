@@ -45,7 +45,7 @@ def main(argv: list[str] | None = None) -> int:
     app.setStyleSheet(QSS)
 
     cfg = load_config()
-    info = updater.check(cfg.update_dir)
+    info = updater.check(cfg.update_path)
     if info and updater.can_self_update():
         QMessageBox.information(None, "업데이트", f"새 버전 {info.version}이(가) 있습니다. 업데이트 후 자동으로 다시 켜집니다."
                                 + (f"\n\n{info.notes}" if info.notes else ""))

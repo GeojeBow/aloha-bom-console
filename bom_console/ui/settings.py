@@ -234,7 +234,8 @@ class SettingsDialog(QDialog):
         self.rep.setPlaceholderText(str(self.cfg.report_path))
         f.addRow("리포트 저장 폴더", path_row(self.rep, self))
         self.upd = QLineEdit(self.cfg.update_dir)
-        self.upd.setPlaceholderText(r"예: N:\Projects\...\AlohaBOM\release")
+        from ..config import RELEASE_FALLBACK
+        self.upd.setPlaceholderText(f"비우면 기본 배포 폴더 사용: {RELEASE_FALLBACK}")
         f.addRow("업데이트 폴더", path_row(self.upd, self))
         f.addRow("", label("이 폴더에 새 AlohaBOM.exe 와 version.json 을 올리면, 각자 exe를 켤 때 자동으로 새 버전으로 바뀝니다.",
                            muted=True, size=9, wrap=True))
