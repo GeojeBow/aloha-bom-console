@@ -32,6 +32,7 @@ jobs:
       - name: Build BOM_Master.exe (same script as the original build.ps1)
         shell: pwsh
         run: |
+          $env:LOCALAPPDATA = "$env:RUNNER_TEMP\lad"   # build dir on the same drive as the repo
           $notes = (Get-Content bom-master/release_notes.txt -Raw -Encoding utf8).Trim()
           & bom-master/build.ps1 -Notes $notes
           if (-not (Test-Path bom-master/release/BOM_Master.exe)) { throw "exe missing" }
