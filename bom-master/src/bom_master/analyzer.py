@@ -474,7 +474,7 @@ FOLDER_FIELD = dict(zip(ROLES, (c for c, _ in FOLDER_COLS)))
 _LEAD = ("material", "desc1")
 MASTER_COLS = [("ship", "Hull"), ("bom", "BOM"), ("material", FIELD_TITLE["material"]),
                ("line_status", "Line Status"), ("desc1", FIELD_TITLE["desc1"])] + FOLDER_COLS + [
-    ("overall", "Overall"), ("sap_status", "SAP Upload"), ("po_status", "Purchase Status"), ("eta", "ETA"),
+    ("overall", "Overall"),
 ] + [(f, FIELD_TITLE[f]) for f in FIELD_IDS if f not in _LEAD] + [("basis", "Basis"), ("source", "Source File")]
 
 # "Mode" column of the SAP BOM sheet: A = added, C = changed, D = deleted line
@@ -521,7 +521,7 @@ def build_master(cfg: Config, keys: dict) -> list:
         common = {
             "ship": cfg.ship_label(ks.ship), "bom": ks.key, "bom_rev": f"R{ks.prod_rev}", "group": ks.group,
             "wp_status": WP_LABEL[ks.wp_status], "cn_status": CN_LABEL[ks.cn_status],
-            "sap_status": "", "po_status": "", "eta": "", "source": ks.prod.path,
+            "source": ks.prod.path,
             "basis": (f"{cfg.ship_label(ks.prod.ship)} Prod DWG (no own Prod BOM)" if ks.baseline_of
                       else ("Prod DWG WIP folder" if ks.prod.loc == "STAGING" else "Prod DWG")),
             "_sev": ks.worst, "_key": ks.key,

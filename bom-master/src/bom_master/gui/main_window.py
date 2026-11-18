@@ -294,7 +294,7 @@ def folder_pred(mode):
 
 
 class MasterPage(Page):
-    title = "Master BOM"
+    title = "설계 Master BOM (자동수집)"
     subtitle = ("All lines of the latest Prod DWG BOMs — status of 16 Prod DWG / 17 Work Package / 03 DCN / 04 ECN "
                 "per line.  ▾ in a column header = Excel-style filter, right-click header = clear filters")
 
@@ -315,7 +315,7 @@ class MasterPage(Page):
         self.model = DictTableModel(MASTER_COLS, chip_cols=FOLDER_CHIPS + ("line_status",))
         self.table = DataTable(self.model)
         self.table.on_filter = self._filter
-        self.table.set_widths([65, 170, 175, 105, 230, 150, 150, 110, 110, 165, 100, 120, 80])
+        self.table.set_widths([65, 170, 175, 105, 230, 150, 150, 110, 110, 165])
         self.lay.addWidget(self.table, 1)
         self.search.textChanged.connect(self._filter)
         self.only.currentIndexChanged.connect(self._filter)
@@ -570,7 +570,7 @@ class FilesPage(Page):
 class IntegrationPage(Page):
     """3-file compare (v0.1 AlohaBOM): 전장설계 Master → SAP Master → 구매 Master, with daily history,
     automatic folder watch and the bilingual engineer report. Runs embedded, unchanged."""
-    title = "SAP & Purchasing · 3-file compare"
+    title = "3-File Compare · 설계 → SAP → 구매"
     subtitle = ("전장설계 Master BOM → SAP Master BOM → 구매 Master BOM — deviations, daily trend and the engineer "
                 "report (ER / Accommodation / On-deck)")
 
@@ -598,9 +598,9 @@ class IntegrationPage(Page):
 
 
 class MasterCheckPage(Page):
-    title = "Master BOM Check · 전장설계 Master BOM 검증"
-    subtitle = ("The hand-compiled 전장설계 Master BOM must be identical to what the folders say "
-                "(latest 16 Prod DWG BOM per block). Every difference is listed here.")
+    title = "Master BOM Check · 설계 Master BOM 검증"
+    subtitle = ("설계 Master BOM (수동, from 3-File Compare) must be identical to 설계 Master BOM (자동수집) — "
+                "the latest 16 Prod DWG BOM per block. Every difference is listed here.")
     MAP_FILTERS = ["All BOMs", "Only BOMs with differences", "Missing in Master", "Not in folders",
                    "Revision differs", "Lines missing / extra", "Values differ", "Matching BOMs"]
 
@@ -615,17 +615,15 @@ class MasterCheckPage(Page):
         cl = QVBoxLayout(card)
         cl.setContentsMargins(16, 12, 16, 12)
         cl.setSpacing(6)
-        self.path = QLineEdit(win.cfg.get("master_bom_file", ""))
-        self.path.setPlaceholderText("Select the 전장설계 Master BOM file (.xlsx / .xlsm)")
-        self.path.editingFinished.connect(self._path_edited)
-        pick = QPushButton("Browse…")
-        pick.clicked.connect(self._browse)
+        self.src = label("", wrap=True)
         self.btn_check = QPushButton("Check now")
         self.btn_check.setObjectName("primary")
         self.btn_check.clicked.connect(lambda: self.run_check(manual=True))
         self.btn_export = QPushButton("Export differences")
         self.btn_export.clicked.connect(self.export)
-        cl.addLayout(hbox(label("<b>Master BOM file</b>"), self.path, pick, self.btn_check, self.btn_export))
+        top = hbox(self.src, self.btn_check, self.btn_export)
+        top.setStretch(0, 1)
+        cl.addLayout(top)
         self.info = label("", "muted", wrap=True)
         cl.addWidget(self.info)
         self.lay.addWidget(card)
@@ -634,8 +632,8 @@ class MasterCheckPage(Page):
         row.setSpacing(12)
         self.cards = {}
         for key, lab, color in (("boms", "BOMs compared", None), ("match", "Identical", theme.OK),
-                                ("diff", "BOMs that differ", theme.ERR), ("missing", "Missing in Master", theme.ERR),
-                                ("extra", "In Master, not in folders", theme.ERR),
+                                ("diff", "BOMs that differ", theme.ERR), ("missing", "Missing in manual Master", theme.ERR),
+                                ("extra", "Only in manual Master", theme.ERR),
                                 ("lines", "Line / value differences", theme.ERR)):
             c = KpiCard(lab, color)
             self.cards[key] = c
@@ -659,7 +657,7 @@ class MasterCheckPage(Page):
         legend = " ".join(f"<span style='color:{ink}'>■</span> {t}&nbsp;&nbsp;" for ink, t in
                           ((theme.OK, "Same"), (theme.ERR, "Differs"), (theme.NONE, "Not applicable")))
         ll.addLayout(hbox(label("Block map", "h2"), None, label(legend, "muted")))
-        ll.addWidget(label("Each tile: <b>B</b> BOM in Master and folders · <b>R</b> revision · <b>L</b> lines "
+        ll.addWidget(label("Each tile: <b>B</b> BOM in both · <b>R</b> revision · <b>L</b> lines "
                            "(missing / extra) · <b>V</b> values (Qty, Unit, Description …)", "muted"))
         self.filter_cb = QComboBox()
         self.filter_cb.addItems(self.MAP_FILTERS)
@@ -726,44 +724,59 @@ class MasterCheckPage(Page):
         self.timer.timeout.connect(self._watch)
         self.timer.start(60_000)
 
-    # ---- file handling
-    def _browse(self):
-        start = self.path.text() or str(Path.home())
-        fn, _ = QFileDialog.getOpenFileName(self, "Select the 전장설계 Master BOM", start,
-                                            "Excel (*.xlsx *.xlsm)")
-        if fn:
-            self.path.setText(fn)
-            self._path_edited()
+    # ---- the two BOMs: manual = newest file in the 3-File Compare '① 설계 Master' folder,
+    #      automatic = this program's folder scan (설계 Master BOM (자동수집))
+    @staticmethod
+    def design_file():
+        """(folder, newest file path or '') of the 설계 Master folder set in 3-File Compare > 설정."""
+        try:
+            from bom_console.config import load_config
+            from bom_console.scanner import newest_file
+            c = load_config()
+            folder = c.folders.get("design", "")
+            f = newest_file(folder, c.patterns, "design") if folder else None
+            return folder, (str(f.path) if f else "")
+        except Exception:  # noqa: BLE001
+            return "", ""
 
-    def _path_edited(self):
-        p = self.path.text().strip().strip('"')
-        if p != self.win.cfg.get("master_bom_file", ""):
-            self.win.cfg["master_bom_file"] = p
-            self.win.cfg.save()
-            self.run_check()
+    def _show_source(self, folder, path):
+        if path:
+            self.src.setText(f"<b>설계 Master BOM (수동)</b> {os.path.basename(path)} "
+                             f"<span style='color:{theme.MUTED}'>(newest file in the 3-File Compare ① 설계 Master "
+                             f"folder)</span> &nbsp;<b>vs.</b>&nbsp; <b>설계 Master BOM (자동수집)</b> "
+                             f"<span style='color:{theme.MUTED}'>(this program's folder scan)</span>")
+        elif folder:
+            self.src.setText(f"<span style='color:{theme.ERR}'>No Excel file in the 설계 Master folder:</span> {folder}")
+        else:
+            self.src.setText("<b>설계 Master BOM (수동)</b> not set yet — choose the ① 설계 Master folder in "
+                             "<b>3-File Compare → 설정</b>. It is then checked here automatically.")
 
     def _watch(self):
-        p = self.win.cfg.get("master_bom_file", "")
-        if self.chk and p and os.path.isfile(p):
-            try:
-                if os.path.getmtime(p) != self.chk.mtime:
-                    self.run_check()
-            except OSError:
-                pass
+        folder, p = self.design_file()
+        if p and (not self.chk or self.chk.path != p or self._mtime(p) != self.chk.mtime):
+            self.run_check()
+        elif not p:
+            self._show_source(folder, p)
+
+    @staticmethod
+    def _mtime(p):
+        try:
+            return os.path.getmtime(p)
+        except OSError:
+            return None
 
     def run_check(self, manual=False):
-        """Compare now (in the background). Called after every folder scan and when the file changes."""
-        p = self.win.cfg.get("master_bom_file", "")
+        """Compare now (in the background). Called after every folder scan and when the design file changes."""
+        folder, p = self.design_file()
+        self._show_source(folder, p)
         if not p:
+            self.chk = None
+            self.refresh()
             if manual:
-                self.win.toast("Select the 전장설계 Master BOM file first.")
-            self._show_info()
-            return
-        if not os.path.isfile(p):
-            self.info.setText(f"<span style='color:{theme.ERR}'>File not found:</span> {p}")
+                self.win.toast("Set the ① 설계 Master folder in 3-File Compare → 설정 first.")
             return
         if not self.win.res:
-            self.info.setText("Scan the folders first — the Master BOM is checked against the scan result.")
+            self.info.setText("Scan the folders first — the 설계 Master BOM is checked against the scan result.")
             return
         if self.worker and self.worker.isRunning():
             self._pending = True
@@ -774,7 +787,7 @@ class MasterCheckPage(Page):
         self.worker.done.connect(self._done)
         self.worker.failed.connect(self._failed)
         self.btn_check.setEnabled(False)
-        self.info.setText("Checking the Master BOM…")
+        self.info.setText("Checking the 설계 Master BOM…")
         self.worker.start()
 
     def _done(self, chk):
@@ -783,8 +796,8 @@ class MasterCheckPage(Page):
         self.chk = chk
         self.refresh()
         n = sum(1 for k in chk.keys.values() if k.n_errors)
-        if old and old.mtime != chk.mtime:
-            self.win.toast(f"New Master BOM file detected and checked — {n} BOMs differ from the folders.")
+        if old and (old.path, old.mtime) != (chk.path, chk.mtime):
+            self.win.toast(f"New 설계 Master BOM file detected and checked — {n} BOMs differ from the folders.")
         if self._pending:
             self._pending = False
             self.run_check()
@@ -797,8 +810,8 @@ class MasterCheckPage(Page):
     def _show_info(self):
         chk = self.chk
         if not chk:
-            self.info.setText("No check yet. Select the Master BOM file — it is compared automatically after "
-                              "each folder scan and whenever the file is saved again.")
+            self.info.setText("Checked automatically after each folder scan and whenever a newer 설계 Master "
+                              "file arrives.")
             return
         when = dt.datetime.fromtimestamp(chk.checked_at).strftime("%Y-%m-%d %H:%M")
         saved = dt.datetime.fromtimestamp(chk.mtime).strftime("%Y-%m-%d %H:%M")
@@ -916,7 +929,7 @@ class MasterCheckPage(Page):
                             f"background:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 {soft},"
                             f"stop:{max(0.02, frac):.3f} {soft},stop:{min(1, frac + 0.001):.3f} transparent);}}"
                             f"QPushButton:hover{{border:1px solid {ink};}}")
-            b.setText(f"{n:>5}   {en} / {ko}  · {len(boms[kind])} BOMs")
+            b.setText(f"{n:>5}   {en}  · {len(boms[kind])} BOMs\n          {ko}")
             b.setToolTip(mc.KINDS[kind][3])
             b.clicked.connect(lambda _=False, kd=kind: self.show_diffs(kind=kd))
             self.kind_host.addWidget(b)
@@ -1061,8 +1074,8 @@ class SettingsPage(Page):
 
 # ---------------------------------------------------------------- window
 class MainWindow(QMainWindow):
-    PAGES = [("dash", "Dashboard", DashboardPage), ("integr", "3-File Compare (SAP·구매)", IntegrationPage),
-             ("master", "Master BOM", MasterPage),
+    PAGES = [("integr", "3-File Compare", IntegrationPage), ("dash", "Dashboard", DashboardPage),
+             ("master", "설계 Master BOM (자동수집)", MasterPage),
              ("sync", "Sync Matrix", SyncPage), ("issues", "Action List", IssuesPage),
              ("mcheck", "Master BOM Check", MasterCheckPage),
              ("files", "File Inventory", FilesPage),
@@ -1108,7 +1121,7 @@ class MainWindow(QMainWindow):
         ml = QVBoxLayout(main)
         ml.setContentsMargins(0, 0, 0, 0)
         ml.setSpacing(0)
-        top = QWidget()
+        top = self.topw = QWidget()
         top.setObjectName("topbar")
         tl = QGridLayout(top)
         tl.setContentsMargins(24, 14, 24, 12)
@@ -1141,7 +1154,7 @@ class MainWindow(QMainWindow):
         tl.setColumnStretch(0, 1)
         ml.addWidget(top)
 
-        status = QWidget()
+        status = self.statw = QWidget()
         status.setObjectName("topbar")
         sl = QHBoxLayout(status)
         sl.setContentsMargins(24, 4, 24, 6)
@@ -1163,7 +1176,7 @@ class MainWindow(QMainWindow):
         ml.addWidget(self.stack, 1)
         rl.addWidget(main, 1)
         self.setCentralWidget(root)
-        self.nav_to("dash")
+        self.nav_to("integr")
         self._load_last()
 
     # ---- state
@@ -1275,6 +1288,11 @@ class MainWindow(QMainWindow):
         self.stack.setCurrentWidget(page)
         self.page_title.setText(page.title)
         self.page_sub.setText(page.subtitle)
+        # 3-File Compare brings its own title bar, file status and buttons; the folder-scan bar would only repeat
+        # a title and offer buttons (hull filter, Scan folders, Export report) that do not apply there.
+        own = key == "integr"
+        self.topw.setVisible(not own)
+        self.statw.setVisible(not own)
 
     def goto_sync(self, role):
         self.pages["sync"].set_folder_filter(2 + ROLES.index(role))

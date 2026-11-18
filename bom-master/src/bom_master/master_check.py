@@ -22,17 +22,17 @@ ERROR, WARN, INFO = "ERROR", "WARN", "INFO"
 
 # kind -> (severity, English title, Korean title, what to do)
 KINDS = {
-    "BOM_MISSING": (ERROR, "BOM missing in Master", "Master에 BOM 없음",
+    "BOM_MISSING": (ERROR, "BOM missing in manual Master", "수동 Master에 BOM 없음",
                     "Add this BOM (latest Prod DWG revision) to the Master BOM file."),
-    "BOM_EXTRA": (ERROR, "BOM not in folders", "폴더에 없는 BOM",
+    "BOM_EXTRA": (ERROR, "BOM not in folders", "자동수집에 없는 BOM",
                   "Master lists a BOM that has no Prod DWG BOM. Remove it from Master, or put the BOM file in "
                   "16 Prod DWG."),
     "REV_DIFF": (ERROR, "Revision differs", "Revision 다름",
                  "Master was compiled from another revision. Update the BOM in Master to the latest Prod DWG "
                  "revision."),
-    "LINE_MISSING": (ERROR, "Line missing in Master", "Master에 라인 없음",
+    "LINE_MISSING": (ERROR, "Line missing in manual Master", "수동 Master에 라인 없음",
                      "Add the line to the Master BOM file."),
-    "LINE_EXTRA": (ERROR, "Line not in folder BOM", "폴더 BOM에 없는 라인",
+    "LINE_EXTRA": (ERROR, "Line not in folder BOM", "자동수집에 없는 라인",
                    "Remove the line from Master, or correct it to match the Prod DWG BOM."),
     "VALUE_DIFF": (ERROR, "Value differs", "값 다름",
                    "Correct the value in Master to the Prod DWG BOM value."),
@@ -398,6 +398,6 @@ def diff_row(d: Diff, cfg, kc: KeyCheck | None = None) -> dict:
 
 DIFF_COLS = [("sev", "Severity"), ("hull", "Hull"), ("bom", "BOM"), ("kind", "Difference / 차이"),
              ("material", FIELD_TITLE["material"]), ("pos", "Pos"), ("desc", FIELD_TITLE["desc1"]),
-             ("field", "Column / 열"), ("folder_value", "Folders (correct) / 폴더 값"),
-             ("master_value", "Master BOM / Master 값"), ("detail", "Detail"), ("master_ref", "Master cell / 위치"),
+             ("field", "Column / 열"), ("folder_value", "자동수집 (correct) / Folders"),
+             ("master_value", "수동 Master / Manual"), ("detail", "Detail"), ("master_ref", "Master cell / 위치"),
              ("action", "What to do / 조치")]

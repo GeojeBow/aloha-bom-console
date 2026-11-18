@@ -1,1 +1,1 @@
-Restored: 3-file compare (설계 → SAP → 구매) is back as the '3-File Compare' page. Includes Master BOM Check (전장설계 Master BOM 검증).
+Menu: 3-File Compare first; Master BOM renamed 설계 Master BOM (자동수집); Master BOM Check now uses the 설계 Master file from 3-File Compare (no separate file input).
