@@ -1,0 +1,6 @@
+{
+  "built": "2026-11-18 14:22",
+  "file": "BOM_Master.exe",
+  "version": "0.4.4",
+  "notes": "Fix: the window no longer grows off the screen when switching menus; wide pages scroll instead."
+}
