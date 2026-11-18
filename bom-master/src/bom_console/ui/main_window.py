@@ -6,7 +6,7 @@ import traceback
 
 from PySide6.QtCore import QObject, QRunnable, Qt, QThreadPool, QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QIcon
-from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QPushButton, QStackedWidget,
+from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QPushButton, QSizePolicy, QStackedWidget,
                                QVBoxLayout, QWidget)
 
 from .. import APP_TITLE, __version__, engine, report
@@ -73,6 +73,10 @@ class SourceChip(QFrame):
         v.setSpacing(0)
         self.name = label(SOURCE_LABELS[source] + (" (기준)" if source == "design" else ""), bold=True, size=9)
         self.meta = label("–", muted=True, size=8.5)
+        # chips shrink on narrow screens instead of pushing the window wider (full path in the tooltip)
+        self.meta.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self.meta.setMinimumWidth(90)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         v.addWidget(self.name)
         v.addWidget(self.meta)
         h.addLayout(v)
@@ -155,12 +159,16 @@ class MainWindow(QMainWindow):
             h.addWidget(ic)
         tv = QVBoxLayout()
         tv.setSpacing(0)
-        tv.addWidget(label(APP_TITLE, size=13, bold=True))
+        title = label(APP_TITLE, size=13, bold=True)
+        title.setToolTip(APP_TITLE)
         self.watch = label("", muted=True, size=8.5)
+        for lb in (title, self.watch):
+            lb.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+            lb.setMinimumWidth(140)
+        tv.addWidget(title)
         self.watch.setTextFormat(Qt.RichText)
         tv.addWidget(self.watch)
-        h.addLayout(tv)
-        h.addStretch(1)
+        h.addLayout(tv, 1)
         self.chips = {s: SourceChip(s) for s in SOURCES}
         for i, s in enumerate(SOURCES):
             if i:

@@ -1,1 +1,1 @@
-3-File Compare: SAP → 구매 comparison added (arrow), and every deviation now says where it broke (SAP / 구매) and whom to contact.
+Fix: the window no longer grows off the screen when switching menus; wide pages scroll instead.

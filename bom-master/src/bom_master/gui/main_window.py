@@ -8,9 +8,9 @@ from pathlib import Path
 
 from PySide6.QtCore import QThread, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
-from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QFileDialog, QFormLayout, QFrame, QGridLayout,
+from PySide6.QtWidgets import (QApplication, QButtonGroup, QCheckBox, QComboBox, QFileDialog, QFormLayout, QFrame, QGridLayout,
                                QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMessageBox, QProgressBar, QPushButton,
-                               QScrollArea, QSpinBox, QStackedWidget, QTabWidget, QVBoxLayout, QWidget)
+                               QScrollArea, QSizePolicy, QSpinBox, QStackedWidget, QTabWidget, QVBoxLayout, QWidget)
 
 from .. import APP_NAME, VERSION, acks, fixer
 from .. import master_check as mc
@@ -144,10 +144,10 @@ class DashboardPage(Page):
         legend = " ".join(
             f"<span style='color:{ink}'>■</span> {t}&nbsp;&nbsp;" for ink, t in
             ((theme.OK, "OK"), (theme.WARN, "Check"), (theme.ERR, "Needs correction"), (theme.NONE, "No file")))
-        top = hbox(label("Block map", "h2"), None, label(legend, "muted"))
+        top = hbox(label("Block map", "h2"), None, label(legend, "muted", wrap=True))
         ll.addLayout(top)
         ll.addWidget(label("Each tile: <b>P</b> 16 Prod DWG · <b>W</b> 17 Work Package · <b>D</b> 03 DCN · "
-                           "<b>E</b> 04 ECN — the bar color is that folder's status", "muted"))
+                           "<b>E</b> 04 ECN — the bar color is that folder's status", "muted", wrap=True))
         self.filter_cb = QComboBox()
         self.filter_cb.addItems(["All BOMs", "Only BOMs with errors", "Only BOMs with issues",
                                  "Problem in 16 Prod DWG", "Problem in 17 Work Package", "Problem in 03 DCN",
@@ -172,7 +172,8 @@ class DashboardPage(Page):
         # issue breakdown
         right = QFrame()
         right.setObjectName("card")
-        right.setFixedWidth(460)
+        right.setMinimumWidth(340)
+        right.setMaximumWidth(460)
         rl = QVBoxLayout(right)
         rl.setContentsMargins(16, 14, 16, 14)
         rl.addWidget(label("What needs fixing", "h2"))
@@ -311,7 +312,7 @@ class MasterPage(Page):
         self.lay.addLayout(hbox(self.search, self.only, self.deleted, self.clear, self.count))
         self.lay.addWidget(label(f"<span style='color:{theme.ERR}'><s>Red strike-through</s></span> = deleted line "
                                  "(Mode = D in the BOM). Line Status comes from the Mode column: "
-                                 "A = Added, C = Changed, D = Deleted.", "muted"))
+                                 "A = Added, C = Changed, D = Deleted.", "muted", wrap=True))
         self.model = DictTableModel(MASTER_COLS, chip_cols=FOLDER_CHIPS + ("line_status",))
         self.table = DataTable(self.model)
         self.table.on_filter = self._filter
@@ -366,7 +367,7 @@ class SyncPage(Page):
         self.lay.addLayout(hbox(self.search, self.only, self.clear, self.count))
         self.lay.addWidget(label("Folder cell = revision held there.  ✓ = consistent · “→” = outdated · “>” = ahead "
                                  "of Prod DWG · “≠” = same revision, different content · “via 1040” = hull "
-                                 "without own Prod DWG BOM, checked against S040", "muted"))
+                                 "without own Prod DWG BOM, checked against S040", "muted", wrap=True))
         self.model = DictTableModel(self.COLS, chip_cols=FOLDER_CHIPS)
         self.table = DataTable(self.model)
         self.table.on_filter = self._filter
@@ -533,7 +534,7 @@ class FilesPage(Page):
         self.lay.addLayout(hbox(self.search, self.role, self.loc, self.count))
         self.lay.addWidget(label("ACTIVE = current release folder · ARCHIVE = Arch/old folder · COMMENT = review or "
                                  "mark-up copy (not compared) · STAGING = work-in-progress folder in Prod DWG",
-                                 "muted"))
+                                 "muted", wrap=True))
         self.model = DictTableModel(self.COLS, chip_cols=("role", "loc"))
         self.table = DataTable(self.model)
         self.table.on_filter = self._filter
@@ -658,7 +659,7 @@ class MasterCheckPage(Page):
                           ((theme.OK, "Same"), (theme.ERR, "Differs"), (theme.NONE, "Not applicable")))
         ll.addLayout(hbox(label("Block map", "h2"), None, label(legend, "muted")))
         ll.addWidget(label("Each tile: <b>B</b> BOM in both · <b>R</b> revision · <b>L</b> lines "
-                           "(missing / extra) · <b>V</b> values (Qty, Unit, Description …)", "muted"))
+                           "(missing / extra) · <b>V</b> values (Qty, Unit, Description …)", "muted", wrap=True))
         self.filter_cb = QComboBox()
         self.filter_cb.addItems(self.MAP_FILTERS)
         self.filter_cb.currentIndexChanged.connect(self._fill_map)
@@ -679,7 +680,8 @@ class MasterCheckPage(Page):
         body.addWidget(left, 3)
         right = QFrame()
         right.setObjectName("card")
-        right.setFixedWidth(470)
+        right.setMinimumWidth(340)
+        right.setMaximumWidth(470)
         rl = QVBoxLayout(right)
         rl.setContentsMargins(16, 14, 16, 14)
         rl.addWidget(label("What differs", "h2"))
@@ -723,6 +725,7 @@ class MasterCheckPage(Page):
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._watch)
         self.timer.start(60_000)
+        QTimer.singleShot(0, lambda: self._show_source(*self.design_file()))
 
     # ---- the two BOMs: manual = newest file in the 3-File Compare '① 설계 Master' folder,
     #      automatic = this program's folder scan (설계 Master BOM (자동수집))
@@ -1088,7 +1091,13 @@ class MainWindow(QMainWindow):
         self.worker = None
         self.ship_filter = set(cfg["ships"])
         self.setWindowTitle(f"{APP_NAME}  v{VERSION}")
-        self.resize(1500, 920)
+        # fit the first window into the screen (laptop screens are often 1366/1536 wide)
+        scr = QApplication.primaryScreen()
+        av = scr.availableGeometry() if scr else None
+        if av:
+            self.resize(min(1500, av.width() - 40), min(920, av.height() - 60))
+        else:
+            self.resize(1500, 920)
 
         root = QWidget()
         rl = QHBoxLayout(root)
@@ -1128,6 +1137,10 @@ class MainWindow(QMainWindow):
         tl.setHorizontalSpacing(12)
         self.page_title = label("", "pageTitle")
         self.page_sub = label("", "muted")
+        # long titles must never widen the window when switching pages: clip them, full text in the tooltip
+        for lb in (self.page_title, self.page_sub):
+            lb.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+            lb.setMinimumWidth(0)
         tl.addWidget(self.page_title, 0, 0)
         tl.addWidget(self.page_sub, 1, 0)
         seg = QHBoxLayout()
@@ -1159,6 +1172,7 @@ class MainWindow(QMainWindow):
         sl = QHBoxLayout(status)
         sl.setContentsMargins(24, 4, 24, 6)
         self.status = label("", "muted")
+        self.status.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         self.bar = QProgressBar()
         self.bar.setFixedWidth(260)
         self.bar.setTextVisible(False)
@@ -1169,10 +1183,18 @@ class MainWindow(QMainWindow):
 
         self.stack = QStackedWidget()
         self.pages = {}
+        self.page_scroll = {}
         for key, _, cls in self.PAGES:
             p = cls(self)
             self.pages[key] = p
-            self.stack.addWidget(p)
+            # each page sits in its own scroll area, so a wide page scrolls instead of pushing the window
+            # off the screen (the stack would otherwise take the largest minimum size of all pages)
+            sc = QScrollArea()
+            sc.setWidgetResizable(True)
+            sc.setFrameShape(QFrame.NoFrame)
+            sc.setWidget(p)
+            self.page_scroll[key] = sc
+            self.stack.addWidget(sc)
         ml.addWidget(self.stack, 1)
         rl.addWidget(main, 1)
         self.setCentralWidget(root)
@@ -1285,9 +1307,11 @@ class MainWindow(QMainWindow):
     def nav_to(self, key):
         self.nav_btn[key].setChecked(True)
         page = self.pages[key]
-        self.stack.setCurrentWidget(page)
+        self.stack.setCurrentWidget(self.page_scroll[key])
         self.page_title.setText(page.title)
         self.page_sub.setText(page.subtitle)
+        self.page_title.setToolTip(page.title)
+        self.page_sub.setToolTip(page.subtitle)
         # 3-File Compare brings its own title bar, file status and buttons; the folder-scan bar would only repeat
         # a title and offer buttons (hull filter, Scan folders, Export report) that do not apply there.
         own = key == "integr"

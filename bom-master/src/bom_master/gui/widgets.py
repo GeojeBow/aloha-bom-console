@@ -441,6 +441,8 @@ class KpiCard(QFrame):
         self.label.setObjectName("kpiLabel")
         self.sub = QLabel("")
         self.sub.setObjectName("kpiLabel")
+        self.label.setWordWrap(True)
+        self.sub.setWordWrap(True)     # cards narrow down on small screens instead of widening the window
         lay.addWidget(self.value)
         lay.addWidget(self.label)
         lay.addWidget(self.sub)
