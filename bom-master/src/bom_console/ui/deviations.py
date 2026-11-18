@@ -6,7 +6,7 @@ from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (QAbstractItemView, QButtonGroup, QComboBox, QHBoxLayout, QHeaderView, QLineEdit,
                                QListWidget, QListWidgetItem, QPushButton, QTableView, QVBoxLayout, QWidget)
 
-from ..compare import CAT_LABELS, CATS, STAGES
+from ..compare import BROKEN, BROKEN_ORDER, CAT_LABELS, CATS, STAGES
 from ..config import AREA_LABELS, AREAS, UNASSIGNED
 from .theme import C, CAT_COLORS
 from .widgets import label
@@ -28,11 +28,11 @@ class DevModel(QAbstractTableModel):
 
     @property
     def headers(self):
-        h = ["우선순위", "구분", "호선", "블록", "구역", "품번", "품명", f"자재코드 ①→{'②' if self.stage == 'sap' else '③'}",
-             f"수량 ①→{'②' if self.stage == 'sap' else '③'}"]
-        if self.stage == "purchase":
+        arrow = {"sap": "①→②", "purchase": "①→③", "link": "②→③"}[self.stage]
+        h = ["우선순위", "구분", "호선", "블록", "구역", "품번", "품명", f"자재코드 {arrow}", f"수량 {arrow}"]
+        if self.stage in ("purchase", "link"):
             h.append("구매 상태 / ETA")
-        return h + ["리포트"]
+        return h + ["끊긴 곳 → 연락", "리포트"]
 
     def set_rows(self, rows, stage, info):
         self.beginResetModel()
@@ -51,18 +51,19 @@ class DevModel(QAbstractTableModel):
         return None
 
     def _cells(self, r):
-        a = r.design
-        o = r.sap if self.stage == "sap" else r.purchase
+        a, o = (r.sap, r.purchase) if self.stage == "link" else (r.design, r.sap if self.stage == "sap" else r.purchase)
         ref = r.ref
         cat = r.cat.get(self.stage)
         code = (f"{a.code} → {o.code}" if a.code != o.code else a.code) if a and o else \
-               (f"{a.code} → 없음" if a else f"설계 없음 → {o.code}")
+               (f"{a.code} → 없음" if a else f"{'SAP' if self.stage == 'link' else '설계'} 없음 → {o.code}")
         qty = (f"{_q(a)} → {_q(o)}" if a.qty != o.qty else _q(a)) if a and o else (f"{_q(a)} → –" if a else f"– → {_q(o)}")
         first, cnt = self.info.get((r.key, self.stage), ("", 0))
         cells = [r.priority(), CAT_LABELS[self.stage].get(cat, ""), r.hull, r.block, r.area, ref.item_no or "",
                  f"{ref.name} {ref.spec}".strip(), code, qty]
-        if self.stage == "purchase":
+        if self.stage in ("purchase", "link"):
             cells.append(f"{r.purchase.status} · {r.purchase.eta}" if r.purchase else "–")
+        b = BROKEN[r.broken()]
+        cells.append(f"{b[0]} → {b[2]}" if b[2] else b[0])
         cells.append(f"{cnt}회" if cnt else "신규")
         return cells
 
@@ -78,7 +79,7 @@ class DevModel(QAbstractTableModel):
                 return QBrush(QColor(CAT_COLORS.get(r.cat.get(self.stage), C["ink"])))
             if c in (7, 8) and r.cat.get(self.stage) in ("missing", "extra", "qty" if c == 8 else "code"):
                 return QBrush(QColor(C["bad"]))
-            if self.stage == "purchase" and c == 9 and r.late:
+            if self.stage in ("purchase", "link") and c == 9 and r.late:
                 return QBrush(QColor(C["bad"]))
             if c == self.columnCount() - 1 and self.info.get((r.key, self.stage), ("", 0))[1] >= 2:
                 return QBrush(QColor(C["bad"]))
@@ -108,7 +109,7 @@ class Deviations(QWidget):
         super().__init__(parent)
         self.cmp = None
         self.info = {}
-        self.f = {"hull": "", "stage": "sap", "cat": "", "area": "", "block": "", "q": ""}
+        self.f = {"hull": "", "stage": "sap", "cat": "", "area": "", "block": "", "q": "", "broken": ""}
         v = QVBoxLayout(self)
         v.setContentsMargins(20, 14, 20, 16)
         v.setSpacing(10)
@@ -116,7 +117,7 @@ class Deviations(QWidget):
         top = QHBoxLayout()
         self.stage_btns = {}
         sg = QButtonGroup(self)
-        for s, txt in (("sap", "① 설계 → ② SAP"), ("purchase", "① 설계 → ③ 구매")):
+        for s, txt in (("sap", "① 설계 → ② SAP"), ("link", "② SAP → ③ 구매"), ("purchase", "① 설계 → ③ 구매")):
             b = QPushButton(txt)
             b.setProperty("chip", True)
             b.setCheckable(True)
@@ -136,6 +137,14 @@ class Deviations(QWidget):
         self.area_cb.currentIndexChanged.connect(lambda _: self.set_filter(area=self.area_cb.currentData() or "", block=""))
         top.addWidget(label("담당 구역", muted=True))
         top.addWidget(self.area_cb)
+        self.broken_cb = QComboBox()
+        self.broken_cb.addItem("끊긴 곳 전체", "")
+        for k in BROKEN_ORDER:
+            self.broken_cb.addItem(BROKEN[k][0], k)
+        self.broken_cb.currentIndexChanged.connect(lambda _: self.set_filter(broken=self.broken_cb.currentData() or "",
+                                                                             block=""))
+        top.addWidget(label("끊긴 곳", muted=True))
+        top.addWidget(self.broken_cb)
         top.addStretch(1)
         self.search = QLineEdit()
         self.search.setPlaceholderText("품번, 품명, 자재코드 검색")
@@ -195,7 +204,10 @@ class Deviations(QWidget):
         self.apply()
 
     def open_with(self, hull, stage, cat, area):
-        self.f.update(hull=hull, stage=stage, cat=cat, area=area, block="", q="")
+        broken = ""
+        if cat.startswith("broken:"):
+            broken, cat = cat[7:], ""
+        self.f.update(hull=hull, stage=stage, cat=cat, area=area, block="", q="", broken=broken)
         self.search.blockSignals(True)
         self.search.clear()
         self.search.blockSignals(False)
@@ -204,7 +216,7 @@ class Deviations(QWidget):
     def _sync_controls(self):
         f = self.f
         self.stage_btns[f["stage"]].setChecked(True)
-        for cb, val in ((self.hull_cb, f["hull"]), (self.area_cb, f["area"])):
+        for cb, val in ((self.hull_cb, f["hull"]), (self.area_cb, f["area"]), (self.broken_cb, f["broken"])):
             cb.blockSignals(True)
             cb.setCurrentIndex(max(0, cb.findData(val)))
             cb.blockSignals(False)
@@ -216,7 +228,8 @@ class Deviations(QWidget):
         f = self.f
         st = f["stage"]
         base = [r for r in self.cmp.rows if r.cat.get(st) not in (None, "ok")
-                and (not f["hull"] or r.hull == f["hull"]) and (not f["area"] or r.area == f["area"])]
+                and (not f["hull"] or r.hull == f["hull"]) and (not f["area"] or r.area == f["area"])
+                and (not f["broken"] or r.broken() == f["broken"])]
         # 종류 칩
         while self.chips_lay.count():
             w = self.chips_lay.takeAt(0).widget()
@@ -267,5 +280,5 @@ class Deviations(QWidget):
         self.count_lb.setText(f"{where} · {len(rows):,}건")
 
     def crumb(self):
-        st = "② SAP" if self.f["stage"] == "sap" else "③ 구매"
-        return f"{self.f['hull'] or '3척'} · ① 설계 → {st}"
+        st = {"sap": "① 설계 → ② SAP", "purchase": "① 설계 → ③ 구매", "link": "② SAP → ③ 구매"}[self.f["stage"]]
+        return f"{self.f['hull'] or '3척'} · {st}"

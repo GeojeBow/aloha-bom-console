@@ -5,7 +5,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (QButtonGroup, QFrame, QGridLayout, QHBoxLayout, QPushButton, QScrollArea,
                                QSizePolicy, QVBoxLayout, QWidget)
 
-from ..compare import CAT_LABELS, CATS, STAGE_LABELS, STAGES
+from ..compare import BROKEN, BROKEN_ORDER, BROKEN_SHORT, CAT_LABELS, CATS, STAGE_LABELS, STAGES
 from ..config import AREA_LABELS, AREAS
 from .theme import AREA_COLORS, C, CAT_COLORS, q
 from .widgets import Arrow, StackBar, TrendChart, card, label
@@ -89,9 +89,12 @@ class Dashboard(QWidget):
     def _pipeline(self, hull):
         cmp = self.res.comparison
         f = card()
-        row = QHBoxLayout(f)
-        row.setContentsMargins(14, 14, 14, 14)
+        outer = QVBoxLayout(f)
+        outer.setContentsMargins(14, 14, 14, 10)
+        outer.setSpacing(6)
+        row = QHBoxLayout()
         row.setSpacing(8)
+        outer.addLayout(row)
         hn = label(hull, size=17, bold=True)
         hn.setFixedWidth(70)
         row.addWidget(hn)
@@ -109,10 +112,55 @@ class Dashboard(QWidget):
         base.setMinimumWidth(170)
         base.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
         row.addWidget(base, 2)
-        for s in STAGES:
-            row.addWidget(Arrow())
-            row.addWidget(self._stage(hull, s), 3)
+        ls = cmp.link_stats(hull)
+        row.addWidget(Arrow())
+        row.addWidget(self._stage(hull, "sap"), 3)
+        row.addWidget(self._link_arrow(hull, ls["link"]))
+        row.addWidget(self._stage(hull, "purchase"), 3)
+        # 어디서 끊겼나: 세 쌍을 함께 본 판정 (정답은 설계 Master)
+        br = QHBoxLayout()
+        br.setSpacing(4)
+        br.addSpacing(78)
+        br.addWidget(label("끊긴 곳", eyebrow=True))
+        for k in BROKEN_ORDER:
+            n = ls["broken"][k]
+            b = QPushButton(f"{BROKEN_SHORT[k]} {n:,}")
+            b.setProperty("link", True)
+            b.setEnabled(n > 0)
+            b.setToolTip(f"{BROKEN[k][0]} → 연락: {BROKEN[k][2]}. 누르면 이 항목들의 목록이 열립니다.")
+            b.clicked.connect(lambda _=False, h=hull, kk=k: self.open_list.emit(
+                h, "purchase" if kk == "purchase" else "sap", f"broken:{kk}", ""))
+            br.addWidget(b)
+        br.addStretch(1)
+        outer.addLayout(br)
         return f
+
+    def _link_arrow(self, hull, n):
+        """SAP → 구매 화살표: 구매가 SAP와 다른 건수. 누르면 SAP-구매 차이 목록."""
+        w = QPushButton()
+        w.setCursor(Qt.PointingHandCursor)
+        w.setFixedWidth(84)
+        w.setMinimumHeight(96)
+        w.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
+        w.setToolTip("② SAP → ③ 구매: 구매가 SAP와 다르게 진행된 건수. 누르면 목록이 열립니다.")
+        w.setStyleSheet("QPushButton{border:none;background:transparent}"
+                        f"QPushButton:hover{{background:{C['soft']};border-radius:6px}}")
+        v = QVBoxLayout(w)
+        v.setContentsMargins(0, 0, 0, 0)
+        v.setSpacing(0)
+        v.addStretch(1)
+        a = Arrow()
+        a.setFixedHeight(24)
+        v.addWidget(a, 0, Qt.AlignHCenter)
+        t = label(f"{n:,}", bold=True, size=10, color=C["bad"] if n else C["ok"])
+        t.setAlignment(Qt.AlignCenter)
+        v.addWidget(t)
+        s = label("SAP·구매 차이", muted=True, size=7.5)
+        s.setAlignment(Qt.AlignCenter)
+        v.addWidget(s)
+        v.addStretch(1)
+        w.clicked.connect(lambda _=False, h=hull: self.open_list.emit(h, "link", "", ""))
+        return w
 
     def _stage(self, hull, stage):
         cmp = self.res.comparison

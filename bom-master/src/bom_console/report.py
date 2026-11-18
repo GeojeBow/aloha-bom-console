@@ -13,7 +13,7 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 
-from .compare import CAT_LABELS, STAGES, Comparison, Row, request_text, request_text_en
+from .compare import BROKEN, BROKEN_ORDER, CAT_LABELS, STAGES, Comparison, Row, request_text, request_text_en
 from .config import AREA_LABELS, AREAS, UNASSIGNED
 
 NAVY = "0D3B4F"
@@ -46,6 +46,7 @@ COLUMNS = [  # (머리글 한글/영문, 폭)
     ("② SAP 자재코드\nSAP Material", 13), ("② SAP 수량\nSAP Qty", 9),
     ("③ 구매 자재코드\nPurchasing Material", 13), ("③ 구매 수량\nPurchasing Qty", 10),
     ("③ 구매 상태 / ETA\nPO Status / ETA", 16),
+    ("끊긴 곳 → 연락할 곳\nWhere it broke → Contact", 26),
     ("SAP팀에 요청할 것\nAction to SAP Team", 40), ("구매팀에 요청할 것\nAction to Purchasing Team", 40),
     ("조치 상태\nStatus", 12), ("조치 내용 (회신)\nAction Taken (Reply)", 30), ("완료일\nDone Date", 11),
 ]
@@ -61,6 +62,11 @@ def _diff(a, o, attr) -> bool:
     if a is None or o is None:
         return True
     return str(getattr(a, attr)).lstrip("0").upper() != str(getattr(o, attr)).lstrip("0").upper()
+
+
+def _broken_text(r: Row) -> str:
+    ko, en, cko, cen = BROKEN[r.broken()]
+    return f"{en} → {cen}\n{ko} → {cko}" if cko else f"{en}\n{ko}"
 
 
 def _rows_for(cmp: Comparison, area: str) -> list[Row]:
@@ -123,6 +129,7 @@ def _write_area_sheet(ws, area: str, rows: list[Row], info: dict, meta: dict) ->
             b.code if b else NONE, _fmt_qty(b) or NONE,
             p.code if p else NONE, _fmt_qty(p) or NONE,
             f"{p.status}\n{p.eta}".strip() if p else "",
+            _broken_text(r),
             req("sap"), req("purchase"), "미조치 Open", "", "",
         ]
         for col, v in enumerate(vals, start=1):
@@ -148,9 +155,10 @@ def _write_area_sheet(ws, area: str, rows: list[Row], info: dict, meta: dict) ->
                     ws.cell(row=r_i, column=cq).font = F_RED
         if r.late:
             ws.cell(row=r_i, column=15).font = F_RED
-        for col in (18, 19, 20):
+        ws.cell(row=r_i, column=16).font = F_BOLD
+        for col in (19, 20, 21):
             ws.cell(row=r_i, column=col).fill = FILL_REPLY
-        dv.add(ws.cell(row=r_i, column=18))
+        dv.add(ws.cell(row=r_i, column=19))
         r_i += 1
     ws.freeze_panes = ws.cell(row=hr + 1, column=6)
     ws.auto_filter.ref = f"A{hr}:{get_column_letter(len(COLUMNS))}{max(r_i - 1, hr)}"
@@ -211,6 +219,20 @@ def _write_summary(ws, cmp: Comparison, areas: list[str], info: dict, meta: dict
                [s2["counts"][c] for c in ("missing", "qty", "code", "extra")]
         for i, v in enumerate(vals, start=1):
             c = ws.cell(row=r1 + j, column=i, value=v)
+            c.font, c.border = F_BODY, BORDER
+    r2 = r1 + len(cmp.hulls()) + 3
+    ws.cell(row=r2 - 1, column=1, value="어디서 끊겼나 (설계-SAP · SAP-구매 · 설계-구매를 함께 본 판정)  /  "
+                                        "Where it broke (all three pairs checked; Design Master is the reference)").font = F_BOLD
+    head3 = ["호선\nHull"] + [f"{BROKEN[k][0]}\n{BROKEN[k][1]}" for k in BROKEN_ORDER] + ["SAP·구매 차이\nSAP vs Purchasing"]
+    for i, h in enumerate(head3, start=1):
+        c = ws.cell(row=r2, column=i, value=h)
+        c.font, c.fill, c.border = F_HEAD, FILL_HEAD, BORDER
+        c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    ws.row_dimensions[r2].height = 46
+    for j, hull in enumerate(cmp.hulls(), start=1):
+        ls = cmp.link_stats(hull)
+        for i, v in enumerate([hull] + [ls["broken"][k] for k in BROKEN_ORDER] + [ls["link"]], start=1):
+            c = ws.cell(row=r2 + j, column=i, value=v)
             c.font, c.border = F_BODY, BORDER
     for i, w in enumerate([30, 18, 18, 18, 18, 18, 18, 18, 18], start=1):
         ws.column_dimensions[get_column_letter(i)].width = w

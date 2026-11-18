@@ -1,1 +1,1 @@
-Menu: 3-File Compare first; Master BOM renamed 설계 Master BOM (자동수집); Master BOM Check now uses the 설계 Master file from 3-File Compare (no separate file input).
+3-File Compare: SAP → 구매 comparison added (arrow), and every deviation now says where it broke (SAP / 구매) and whom to contact.

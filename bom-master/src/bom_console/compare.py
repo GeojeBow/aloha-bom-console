@@ -9,12 +9,26 @@ from .config import AREAS, UNASSIGNED
 from .reader import BomItem
 
 STAGES = ("sap", "purchase")
-STAGE_LABELS = {"sap": "② SAP", "purchase": "③ 구매"}
+STAGE_LABELS = {"sap": "② SAP", "purchase": "③ 구매", "link": "② SAP → ③ 구매"}
 CATS = ("missing", "qty", "code", "extra")
 CAT_LABELS = {
     "sap": {"missing": "SAP 미등록", "qty": "수량 차이", "code": "코드·사양 차이", "extra": "SAP에만 있음"},
     "purchase": {"missing": "미발주", "qty": "수량 차이", "code": "코드·사양 차이", "extra": "구매에만 있음"},
+    "link": {"missing": "SAP엔 있는데 미발주", "qty": "SAP와 수량 다름", "code": "SAP와 코드·사양 다름",
+             "extra": "SAP에 없는데 발주"},
 }
+# 세 쌍(설계-SAP, SAP-구매, 설계-구매)을 함께 보고 "어디서 끊겼나"를 하나로 정한다. 정답은 언제나 설계 Master.
+# key -> (한글, English, 연락할 곳, Contact)
+BROKEN = {
+    "ok": ("정상", "OK", "", ""),
+    "sap": ("SAP에서 끊김 (구매도 SAP를 따라감)", "Broke at SAP (Purchasing followed SAP)",
+            "SAP팀 → 이후 구매팀", "SAP team, then Purchasing"),
+    "purchase": ("구매에서 끊김", "Broke at Purchasing", "구매팀", "Purchasing team"),
+    "sap_only": ("SAP만 정정 (발주는 정상)", "Fix SAP only (order is correct)", "SAP팀", "SAP team"),
+    "both": ("SAP·구매 각각 다름", "SAP and Purchasing both differ", "SAP팀 + 구매팀", "SAP + Purchasing teams"),
+}
+BROKEN_ORDER = ("sap", "purchase", "sap_only", "both")
+BROKEN_SHORT = {"sap": "SAP에서 끊김", "purchase": "구매에서 끊김", "sap_only": "SAP만 정정", "both": "둘 다 다름"}
 RECEIVED_RE = re.compile(r"입고|received|delivered|\bgr\b|완료|closed", re.I)
 
 
@@ -90,6 +104,7 @@ class Row:
     sap: BomItem | None
     purchase: BomItem | None
     cat: dict[str, str] = field(default_factory=dict)   # stage → ok/missing/qty/code/extra, 없으면 해당 없음
+    #   "link" = SAP → 구매 (구매가 SAP대로 했나). 판정 근거로만 쓰고, 차이 건수는 언제나 설계 기준.
     late: bool = False
 
     @property
@@ -99,6 +114,18 @@ class Row:
     def has_dev(self, stage: str | None = None) -> bool:
         stages = [stage] if stage else STAGES
         return any(self.cat.get(s) not in (None, "ok") for s in stages)
+
+    def broken(self) -> str:
+        """어디서 끊겼나: ok / sap / purchase / sap_only / both (BROKEN 참고)."""
+        s_bad = self.cat.get("sap") not in (None, "ok")
+        p_bad = self.cat.get("purchase") not in (None, "ok")
+        if not s_bad and not p_bad:
+            return "ok"
+        if s_bad and not p_bad:
+            return "sap_only"
+        if p_bad and not s_bad:
+            return "purchase"
+        return "sap" if self.cat.get("link") in (None, "ok") else "both"
 
     def priority(self) -> str:
         if self.cat.get("sap") == "missing" or (self.late and self.design):
@@ -136,6 +163,24 @@ class Comparison:
         return {"base": base, "counts": c, "dev": dev, "pct": (c["ok"] / base * 100) if base else 0.0, "late": late}
 
 
+def _link_stats(self, hull: str | None, area: str | None = None) -> dict:
+    """SAP → 구매 화살표: 구매가 SAP와 다른 건수, 그리고 끊긴 곳별 건수."""
+    link = 0
+    broken = {k: 0 for k in BROKEN_ORDER}
+    for r in self.rows:
+        if (hull and r.hull != hull) or (area and r.area != area):
+            continue
+        if r.cat.get("link") not in (None, "ok"):
+            link += 1
+        b = r.broken()
+        if b != "ok":
+            broken[b] += 1
+    return {"link": link, "broken": broken}
+
+
+Comparison.link_stats = _link_stats
+
+
 def compare(design: list[BomItem], sap: list[BomItem], purchase: list[BomItem],
             area_rules: list[list[str]], today: dt.date | None = None) -> Comparison:
     today = today or dt.date.today()
@@ -157,6 +202,8 @@ def compare(design: list[BomItem], sap: list[BomItem], purchase: list[BomItem],
             r.cat["sap"] = judge(a, b)
         if a or p:
             r.cat["purchase"] = judge(a, p)
+        if b or p:
+            r.cat["link"] = judge(b, p)
         r.late = is_late(p, today)
         rows.append(r)
     unassigned = sorted({r.block for r in rows if r.area == UNASSIGNED and r.has_dev()})
