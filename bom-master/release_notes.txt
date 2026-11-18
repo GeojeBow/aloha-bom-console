@@ -1,1 +1,1 @@
-New: Master BOM Check (전장설계 Master BOM 검증) — compares the hand-compiled Master BOM with the folders and lists every difference.
+Restored: 3-file compare (설계 → SAP → 구매) is back as the '3-File Compare' page. Includes Master BOM Check (전장설계 Master BOM 검증).

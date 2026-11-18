@@ -568,41 +568,33 @@ class FilesPage(Page):
 
 
 class IntegrationPage(Page):
-    title = "SAP & Purchasing"
-    subtitle = "Next step: match every BOM line with SAP upload status and purchasing status / ETA"
+    """3-file compare (v0.1 AlohaBOM): 전장설계 Master → SAP Master → 구매 Master, with daily history,
+    automatic folder watch and the bilingual engineer report. Runs embedded, unchanged."""
+    title = "SAP & Purchasing · 3-file compare"
+    subtitle = ("전장설계 Master BOM → SAP Master BOM → 구매 Master BOM — deviations, daily trend and the engineer "
+                "report (ER / Accommodation / On-deck)")
 
     def __init__(self, win):
         super().__init__(win)
-        for key, head, text in (
-                ("sap_file", "SAP master file",
-                 "Will mark each Master BOM line as Uploaded / Not uploaded / Different in SAP (by Material No. "
-                 "and BOM). Fills the 'SAP Upload' column."),
-                ("purchase_file", "Purchasing master file",
-                 "Will map purchasing status and ETA to each line (by Material No.). Fills the 'Purchase Status' "
-                 "and 'ETA' columns.")):
-            card = QFrame()
-            card.setObjectName("card")
-            cl = QVBoxLayout(card)
-            cl.setContentsMargins(18, 14, 18, 14)
-            cl.addWidget(label(head, "h2"))
-            cl.addWidget(label(text, "muted", wrap=True))
-            path = QLineEdit(win.cfg.get(key, ""))
-            path.setPlaceholderText("Not provided yet")
-            pick = QPushButton("Browse…")
+        self.lay.setContentsMargins(0, 0, 0, 0)
+        self.inner = None
+        self.err = None
+        QTimer.singleShot(0, self._build)
 
-            def browse(_=False, p=path, k=key):
-                fn, _ = QFileDialog.getOpenFileName(self, "Select file", p.text() or str(Path.home()),
-                                                    "Excel (*.xlsx *.xlsm *.xls *.csv)")
-                if fn:
-                    p.setText(fn)
-                    win.cfg[k] = fn
-                    win.cfg.save()
-            pick.clicked.connect(browse)
-            cl.addLayout(hbox(path, pick))
-            cl.addWidget(label(f"<span style='color:{theme.WARN}'>● Waiting for file format</span> — comparison "
-                               "logic is added once a sample file is available.", wrap=True))
-            self.lay.addWidget(card)
-        self.lay.addStretch(1)
+    def _build(self):
+        try:
+            from bom_console.config import load_config
+            from bom_console.ui.main_window import MainWindow as CompareWindow
+            from bom_console.ui.theme import QSS as COMPARE_QSS
+            w = CompareWindow(load_config(), None)
+            w.setWindowFlags(Qt.Widget)
+            w.setStyleSheet(COMPARE_QSS)
+            self.inner = w
+            self.lay.addWidget(w, 1)
+        except Exception:  # noqa: BLE001 - keep the rest of BOM Master usable
+            self.err = label(f"The 3-file compare could not start:<br><pre>{traceback.format_exc()[-1500:]}</pre>",
+                             "muted", wrap=True)
+            self.lay.addWidget(self.err)
 
 
 class MasterCheckPage(Page):
@@ -1069,10 +1061,11 @@ class SettingsPage(Page):
 
 # ---------------------------------------------------------------- window
 class MainWindow(QMainWindow):
-    PAGES = [("dash", "Dashboard", DashboardPage), ("master", "Master BOM", MasterPage),
+    PAGES = [("dash", "Dashboard", DashboardPage), ("integr", "3-File Compare (SAP·구매)", IntegrationPage),
+             ("master", "Master BOM", MasterPage),
              ("sync", "Sync Matrix", SyncPage), ("issues", "Action List", IssuesPage),
              ("mcheck", "Master BOM Check", MasterCheckPage),
-             ("files", "File Inventory", FilesPage), ("integr", "SAP & Purchasing", IntegrationPage),
+             ("files", "File Inventory", FilesPage),
              ("settings", "Settings", SettingsPage)]
 
     def __init__(self, cfg):
